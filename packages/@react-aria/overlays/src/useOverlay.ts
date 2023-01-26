@@ -43,7 +43,7 @@ export interface AriaOverlayProps {
    * out interaction with elements that should not dismiss the overlay.
    * By default, onClose will always be called on interaction outside the overlay ref.
    */
-  shouldCloseOnInteractOutside?: (element: Element) => boolean
+  shouldCloseOnInteractOutside?: (element: Element, event: SyntheticEvent<Element>) => boolean
 }
 
 export interface OverlayAria {
@@ -92,7 +92,7 @@ export function useOverlay(props: AriaOverlayProps, ref: RefObject<Element>): Ov
   };
 
   let onInteractOutsideStart = (e: SyntheticEvent<Element>) => {
-    if (!shouldCloseOnInteractOutside || shouldCloseOnInteractOutside(e.target as Element)) {
+    if (!shouldCloseOnInteractOutside || shouldCloseOnInteractOutside(e.target as Element, e)) {
       if (visibleOverlays[visibleOverlays.length - 1] === ref) {
         e.stopPropagation();
         e.preventDefault();
@@ -101,7 +101,7 @@ export function useOverlay(props: AriaOverlayProps, ref: RefObject<Element>): Ov
   };
 
   let onInteractOutside = (e: SyntheticEvent<Element>) => {
-    if (!shouldCloseOnInteractOutside || shouldCloseOnInteractOutside(e.target as Element)) {
+    if (!shouldCloseOnInteractOutside || shouldCloseOnInteractOutside(e.target as Element, e)) {
       if (visibleOverlays[visibleOverlays.length - 1] === ref) {
         e.stopPropagation();
         e.preventDefault();
@@ -132,7 +132,7 @@ export function useOverlay(props: AriaOverlayProps, ref: RefObject<Element>): Ov
         return;
       }
 
-      if (!shouldCloseOnInteractOutside || shouldCloseOnInteractOutside(e.relatedTarget as Element)) {
+      if (!shouldCloseOnInteractOutside || shouldCloseOnInteractOutside(e.relatedTarget as Element, e)) {
         onClose();
       }
     }

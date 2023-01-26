@@ -14,7 +14,7 @@ import {ariaHideOutside} from './ariaHideOutside';
 import {DOMAttributes} from '@react-types/shared';
 import {mergeProps} from '@react-aria/utils';
 import {OverlayTriggerState} from '@react-stately/overlays';
-import {RefObject, useEffect} from 'react';
+import {RefObject, SyntheticEvent, useEffect} from 'react';
 import {useOverlay} from './useOverlay';
 import {useOverlayFocusContain} from './Overlay';
 import {usePreventScroll} from './usePreventScroll';
@@ -29,7 +29,14 @@ export interface AriaModalOverlayProps {
    * Whether pressing the escape key to close the modal should be disabled.
    * @default false
    */
-  isKeyboardDismissDisabled?: boolean
+  isKeyboardDismissDisabled?: boolean,
+  /**
+   * When user interacts with the argument element outside of the overlay ref,
+   * return true if onClose should be called.  This gives you a chance to filter
+   * out interaction with elements that should not dismiss the overlay.
+   * By default, onClose will always be called on interaction outside the overlay ref.
+   */
+  shouldCloseOnInteractOutside?: (element: Element, event: SyntheticEvent<Element>) => boolean
 }
 
 export interface ModalOverlayAria {

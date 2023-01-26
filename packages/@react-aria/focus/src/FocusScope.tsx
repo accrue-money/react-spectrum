@@ -12,7 +12,9 @@
 
 import {FocusableElement} from '@react-types/shared';
 import {focusSafely} from './focusSafely';
+import {getActiveElement} from './getActiveElement';
 import {isElementVisible} from './isElementVisible';
+import {isInDocument} from './isInDocument';
 import React, {ReactNode, RefObject, useContext, useEffect, useMemo, useRef} from 'react';
 import {useLayoutEffect} from '@react-aria/utils';
 
@@ -132,7 +134,7 @@ export function FocusScope(props: FocusScopeProps) {
   // this layout effect needs to run last so that focusScopeTree cleanup happens at the last moment possible
   useEffect(() => {
     if (scopeRef) {
-      let activeElement = document.activeElement;
+      let activeElement = getActiveElement();
       let scope = null;
       // In strict mode, active scope is incorrectly updated since cleanup will run even though scope hasn't unmounted.
       // To fix this, we need to update the actual activeScope here
@@ -197,7 +199,7 @@ function createFocusManagerForScope(scopeRef: React.RefObject<Element[]>): Focus
     focusNext(opts: FocusManagerOptions = {}) {
       let scope = scopeRef.current;
       let {from, tabbable, wrap, accept} = opts;
-      let node = from || document.activeElement;
+      let node = from || getActiveElement();
       let sentinel = scope[0].previousElementSibling;
       let walker = getFocusableTreeWalker(getScopeRoot(scope), {tabbable, accept}, scope);
       walker.currentNode = isElementInScope(node, scope) ? node : sentinel;
@@ -214,7 +216,7 @@ function createFocusManagerForScope(scopeRef: React.RefObject<Element[]>): Focus
     focusPrevious(opts: FocusManagerOptions = {}) {
       let scope = scopeRef.current;
       let {from, tabbable, wrap, accept} = opts;
-      let node = from || document.activeElement;
+      let node = from || getActiveElement();
       let sentinel = scope[scope.length - 1].nextElementSibling;
       let walker = getFocusableTreeWalker(getScopeRoot(scope), {tabbable, accept}, scope);
       walker.currentNode = isElementInScope(node, scope) ? node : sentinel;
@@ -275,7 +277,7 @@ focusableElements.push('[tabindex]:not([tabindex="-1"]):not([disabled])');
 const TABBABLE_ELEMENT_SELECTOR = focusableElements.join(':not([hidden]):not([tabindex="-1"]),');
 
 function getScopeRoot(scope: Element[]) {
-  return scope[0].parentElement;
+  return scope[0].parentElement || scope[0].parentNode as Element;
 }
 
 function shouldContainFocus(scopeRef: ScopeRef) {
@@ -312,7 +314,7 @@ function useFocusContainment(scopeRef: RefObject<Element[]>, contain: boolean) {
         return;
       }
 
-      let focusedElement = document.activeElement;
+      let focusedElement = getActiveElement();
       let scope = scopeRef.current;
       if (!isElementInScope(focusedElement, scope)) {
         return;
@@ -357,10 +359,10 @@ function useFocusContainment(scopeRef: RefObject<Element[]>, contain: boolean) {
         cancelAnimationFrame(raf.current);
       }
       raf.current = requestAnimationFrame(() => {
-        // Use document.activeElement instead of e.relatedTarget so we can tell if user clicked into iframe
-        if (shouldContainFocus(scopeRef) && !isElementInChildScope(document.activeElement, scopeRef)) {
+        // Use getActiveElement() instead of e.relatedTarget so we can tell if user clicked into iframe
+        if (shouldContainFocus(scopeRef) && !isElementInChildScope(getActiveElement(), scopeRef)) {
           activeScope = scopeRef;
-          if (document.body.contains(e.target)) {
+          if (isInDocument(e.target)) {
             focusedNode.current = e.target;
             focusedNode.current.focus();
           } else if (activeScope) {
@@ -470,7 +472,7 @@ function useAutoFocus(scopeRef: RefObject<Element[]>, autoFocus: boolean) {
   useEffect(() => {
     if (autoFocusRef.current) {
       activeScope = scopeRef;
-      if (!isElementInScope(document.activeElement, activeScope.current)) {
+      if (!isElementInScope(getActiveElement(), activeScope.current)) {
         focusFirstInScope(scopeRef.current);
       }
     }
@@ -521,7 +523,7 @@ function shouldRestoreFocus(scopeRef: ScopeRef) {
 
 function useRestoreFocus(scopeRef: RefObject<Element[]>, restoreFocus: boolean, contain: boolean) {
   // create a ref during render instead of useLayoutEffect so the active element is saved before a child with autoFocus=true mounts.
-  const nodeToRestoreRef = useRef(typeof document !== 'undefined' ? document.activeElement as FocusableElement : null);
+  const nodeToRestoreRef = useRef(typeof document !== 'undefined' ? getActiveElement() as FocusableElement : null);
 
   // restoring scopes should all track if they are active regardless of contain, but contain already tracks it plus logic to contain the focus
   // restoring-non-containing scopes should only care if they become active so they can perform the restore
@@ -565,7 +567,7 @@ function useRestoreFocus(scopeRef: RefObject<Element[]>, restoreFocus: boolean, 
         return;
       }
 
-      let focusedElement = document.activeElement as FocusableElement;
+      let focusedElement = getActiveElement() as FocusableElement;
       if (!isElementInScope(focusedElement, scopeRef.current)) {
         return;
       }
@@ -578,7 +580,7 @@ function useRestoreFocus(scopeRef: RefObject<Element[]>, restoreFocus: boolean, 
       walker.currentNode = focusedElement;
       let nextElement = (e.shiftKey ? walker.previousNode() : walker.nextNode()) as FocusableElement;
 
-      if (!document.body.contains(nodeToRestore) || nodeToRestore === document.body) {
+      if (!isInDocument(nodeToRestore) || nodeToRestore === document.body) {
         nodeToRestore = null;
         focusScopeTree.getTreeNode(scopeRef).nodeToRestore = null;
       }
@@ -626,19 +628,19 @@ function useRestoreFocus(scopeRef: RefObject<Element[]>, restoreFocus: boolean, 
         && nodeToRestore
         && (
           // eslint-disable-next-line react-hooks/exhaustive-deps
-          isElementInScope(document.activeElement, scopeRef.current)
-          || (document.activeElement === document.body && shouldRestoreFocus(scopeRef))
+          isElementInScope(getActiveElement(), scopeRef.current)
+          || (getActiveElement() === document.body && shouldRestoreFocus(scopeRef))
         )
       ) {
         // freeze the focusScopeTree so it persists after the raf, otherwise during unmount nodes are removed from it
         let clonedTree = focusScopeTree.clone();
         requestAnimationFrame(() => {
           // Only restore focus if we've lost focus to the body, the alternative is that focus has been purposefully moved elsewhere
-          if (document.activeElement === document.body) {
+          if (getActiveElement() === document.body) {
             // look up the tree starting with our scope to find a nodeToRestore still in the DOM
             let treeNode = clonedTree.getTreeNode(scopeRef);
             while (treeNode) {
-              if (treeNode.nodeToRestore && document.body.contains(treeNode.nodeToRestore)) {
+              if (treeNode.nodeToRestore && isInDocument(treeNode.nodeToRestore)) {
                 focusElement(treeNode.nodeToRestore);
                 return;
               }
@@ -668,6 +670,7 @@ function useRestoreFocus(scopeRef: RefObject<Element[]>, restoreFocus: boolean, 
  */
 export function getFocusableTreeWalker(root: Element, opts?: FocusManagerOptions, scope?: Element[]) {
   let selector = opts?.tabbable ? TABBABLE_ELEMENT_SELECTOR : FOCUSABLE_ELEMENT_SELECTOR;
+
   let walker = document.createTreeWalker(
     root,
     NodeFilter.SHOW_ELEMENT,
@@ -709,7 +712,7 @@ export function createFocusManager(ref: RefObject<Element>, defaultOptions: Focu
         return;
       }
       let {from, tabbable = defaultOptions.tabbable, wrap = defaultOptions.wrap, accept = defaultOptions.accept} = opts;
-      let node = from || document.activeElement;
+      let node = from || getActiveElement();
       let walker = getFocusableTreeWalker(root, {tabbable, accept});
       if (root.contains(node)) {
         walker.currentNode = node;
@@ -730,7 +733,7 @@ export function createFocusManager(ref: RefObject<Element>, defaultOptions: Focu
         return;
       }
       let {from, tabbable = defaultOptions.tabbable, wrap = defaultOptions.wrap, accept = defaultOptions.accept} = opts;
-      let node = from || document.activeElement;
+      let node = from || getActiveElement();
       let walker = getFocusableTreeWalker(root, {tabbable, accept});
       if (root.contains(node)) {
         walker.currentNode = node;
